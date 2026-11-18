@@ -57,6 +57,7 @@ function doGet(e) {
       present: isChecked(row[COL_PRESENT - 1])
     });
   }
+  sortByFio(data);
   return jsonOut({ ok: true, data: data, event: currentEvent() });
 }
 
@@ -157,7 +158,8 @@ function addParticipant(p) {
   sheet.getRange(newRow, COL_NUM, 1, 5).setValues([[num, fio, uin, stupen, pol]]); // A:E
   sheet.getRange(newRow, COL_PRESENT).setValue(false);
   SpreadsheetApp.flush();
-  return { ok: true, row: newRow, num: num };
+  orderProtocol();
+  return { ok: true, row: findRowByUin(sheet, uin), num: num };
 }
 
 // Витрина результатов: заголовки нормативов из строки 1 и значения ровно
@@ -193,6 +195,7 @@ function getResults() {
       });
     }
   }
+  sortByFio(data);
   var norms = [];
   try { norms = getNorms(); } catch (e) {}
   return { ok: true, disciplines: disciplines, data: data, norms: norms, event: currentEvent(), updated: new Date().toISOString() };
@@ -251,15 +254,16 @@ function loadDate(name, mode, force) {
   var people = readRegistration(src);
   if (!people.length) return { ok: false, error: 'на листе «' + name + '» нет участников' };
   var sheet = getSheet();
-  sortByFio(people);
 
   if (mode === 'append') {
     var res = appendPeople(sheet, people);
+    orderProtocol();
     setControl(name, null, null);
     return { ok: true, mode: 'append', added: res.added, skipped: res.skipped, event: name };
   }
 
   // Новая дата: алфавитный порядок и сквозные номера 1, 2, 3…
+  sortByFio(people);
   people.forEach(function (p, i) { p.num = i + 1; });
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   // Вместо архива — «База сдавших»: не даём стереть протокол, который туда ещё не отправили
@@ -275,6 +279,7 @@ function loadDate(name, mode, force) {
     if (lastCol >= 2) clearInputs(sh, 2, 2, lastCol); // столбец A с номерами не трогаем
   });
   writePeople(sheet, people, 2);
+  syncDisciplineNumbers(ss, people.map(function (p) { return [p.num]; }));
   SpreadsheetApp.flush();
   try { paintBadges(); } catch (e) {}
   setControl(name, people.length, archive);
@@ -719,8 +724,7 @@ function importResults(params) {
     }
   });
   plan.forEach(function (p) { if (p.it.present && p.row) sheet.getRange(p.row, COL_PRESENT).setValue(true); });
-  SpreadsheetApp.flush();
-  try { paintBadges(); } catch (e) {}
+  orderProtocol();
   return { ok: true, stat: stat };
 }
 
@@ -729,19 +733,31 @@ function importResults(params) {
 // поэтому вместе с участниками переставляются и введённые результаты. Формулы не трогаем.
 function permuteRows(sh, firstCol, lastCol, n, order) {
   if (lastCol < firstCol || n < 1) return;
+  var maxRows = sh.getMaxRows();
+  if (n + 1 > maxRows) sh.insertRowsAfter(maxRows, n + 1 - maxRows);
   var w = lastCol - firstCol + 1;
   var rg = sh.getRange(2, firstCol, n, w);
   var vals = rg.getValues(), forms = rg.getFormulas();
-  for (var c = 0; c < w; c++) {
-    var hasF = false, allF = true;
-    for (var r = 0; r < n; r++) { if (forms[r][c]) hasF = true; else allF = false; }
-    if (hasF) continue;                                         // столбец с формулами остаётся как есть
-    var col = vals.map(function (row) { return row[c]; });
-    sh.getRange(2, firstCol + c, n, 1).setValues(order.map(function (i) { return [col[i]]; }));
+  // Записываем соседние столбцы одним блоком, оставляя формулы на их местах.
+  var start = -1;
+  for (var c = 0; c <= w; c++) {
+    var keep = c === w || forms.some(function (row) { return !!row[c]; });
+    if (!keep) {
+      if (start === -1) start = c;
+    } else if (start !== -1) {
+      sh.getRange(2, firstCol + start, n, c - start)
+        .setValues(order.map(function (i) { return vals[i].slice(start, c); }));
+      start = -1;
+    }
   }
 }
 
 function sortAndRenumber() {
+  return orderProtocol(true);
+}
+
+// При догрузке сохраняем выданные номера. Перенумерация — отдельное действие.
+function orderProtocol(renumber) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var list = getSheet();
   var last = list.getLastRow();
@@ -750,34 +766,52 @@ function sortAndRenumber() {
   var n = fio.length;
   while (n > 0 && String(fio[n - 1][0]).trim() === '') n--;
   if (!n) return { ok: true, count: 0, moved: 0 };
-  var key = function (i) { return String(fio[i][0]).trim().toLowerCase().replace(/ё/g, 'е'); };
   var order = [];
   for (var i = 0; i < n; i++) order.push(i);
-  order.sort(function (a, b) { var x = key(a), y = key(b); return x < y ? -1 : x > y ? 1 : a - b; });
+  order.sort(function (a, b) { return compareFio(fio[a][0], fio[b][0]) || a - b; });
   var moved = order.filter(function (v, i) { return v !== i; }).length;
+  var emptyRows = fio.slice(0, n).filter(function (r) { return String(r[0]).trim() === ''; }).length;
 
   if (moved) {
-    permuteRows(list, 1, COL_LETTER, n, order);
+    permuteRows(list, renumber ? COL_FIO : COL_NUM, COL_LETTER, n, order);
     ss.getSheets().forEach(function (sh) {
       if (RESULT_SHEETS.indexOf(normName(sh.getName())) === -1) return;
       permuteRows(sh, 2, sh.getLastColumn(), n, order);
     });
   }
-  var nums = [];
-  for (var k = 1; k <= n; k++) nums.push([k]);
-  list.getRange(2, COL_NUM, n, 1).setValues(nums);
+  var numberRange = list.getRange(2, COL_NUM, n, 1);
+  var nums = renumber ? order.map(function (_, i) { return [i < n - emptyRows ? i + 1 : '']; }) : numberRange.getValues();
+  if (renumber) numberRange.setValues(nums);
+  syncDisciplineNumbers(ss, nums);
   SpreadsheetApp.flush();
   try { paintBadges(); } catch (e) {}
-  return { ok: true, count: n, moved: moved };
+  return { ok: true, count: n - emptyRows, moved: moved };
 }
 
-// По алфавиту, без учёта регистра («РЯЗАНОВА» и «Рязанова» рядом), ё = е
-function sortByFio(people) {
-  var key = function (p) { return p.fio.toLowerCase().replace(/ё/g, 'е'); };
-  people.sort(function (a, b) {
-    var x = key(a), y = key(b);
-    return x < y ? -1 : x > y ? 1 : 0;
+// На листах с ручными номерами судьи должны видеть тот же номер, что и в «Списке».
+function syncDisciplineNumbers(ss, nums) {
+  ss.getSheets().forEach(function (sh) {
+    if (RESULT_SHEETS.indexOf(normName(sh.getName())) === -1) return;
+    var maxRows = sh.getMaxRows();
+    if (nums.length + 1 > maxRows) sh.insertRowsAfter(maxRows, nums.length + 1 - maxRows);
+    var formulas = sh.getRange(1, COL_NUM, nums.length + 1, 1).getFormulas();
+    if (formulas.some(function (row) { return !!row[0]; })) return;
+    var rg = sh.getRange(2, COL_NUM, nums.length, 1);
+    var old = rg.getValues();
+    if (old.some(function (row, i) { return String(row[0]) !== String(nums[i][0]); })) rg.setValues(nums);
   });
+}
+
+// Пустые строки внизу. Русский порядок ФИО без учёта регистра.
+function compareFio(a, b) {
+  var x = String(a || '').replace(/\s+/g, ' ').trim();
+  var y = String(b || '').replace(/\s+/g, ' ').trim();
+  if (!x || !y) return Number(!x) - Number(!y);
+  return x.localeCompare(y, 'ru', { sensitivity: 'accent' });
+}
+
+function sortByFio(people) {
+  people.sort(function (a, b) { return compareFio(a.fio, b.fio); });
 }
 
 function normName(n) {
