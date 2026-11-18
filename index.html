@@ -90,7 +90,7 @@
       <div class="datebar">
         <svg class="dico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
         <select id="evSelect" class="evsel" aria-label="Дата соревнований" title="Дата соревнований из «Регистрации ГТО»"><option value="">дата: загрузка…</option></select>
-        <button type="button" class="btn primary evload" id="evLoad" hidden title="Загрузить участников выбранной даты (текущий протокол уйдёт в архив)">Загрузить</button>
+        <button type="button" class="btn primary evload" id="evLoad" hidden title="Заново загрузить список из регистрации со сбросом явки и результатов">Загрузить</button>
         <button type="button" class="iconbtn" id="evAppend" title="Догрузить новых участников этой даты из регистрации" aria-label="Догрузить новых участников из регистрации">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
         </button>
@@ -551,12 +551,13 @@
     updateDateButtons();
   }
 
-  // «Загрузить» — только когда выбрана другая дата; «Догрузить новых» — для текущей
   function updateDateButtons() {
     var v = evSelect.value;
-    evLoadBtn.hidden = !v || v === currentEventName;
-    evAppendBtn.disabled = !v || v !== currentEventName;
-    evSelect.classList.toggle('changed', !evLoadBtn.hidden);
+    var current = v && v === currentEventName;
+    evLoadBtn.hidden = !v;
+    if (!evSelect.disabled) evLoadBtn.textContent = current ? 'Перезагрузить' : 'Загрузить';
+    evAppendBtn.disabled = evSelect.disabled || !current;
+    evSelect.classList.toggle('changed', !!v && !current);
   }
   evSelect.addEventListener('change', updateDateButtons);
 
@@ -602,8 +603,9 @@
   function loadEvent(mode, force) {
     var name = evSelect.value;
     if (!name) return;
+    var reload = name === currentEventName;
     if (mode === 'replace' && !force && !window.confirm(
-      'Загрузить «' + name + '»?\n\n«Список», явка и результаты очистятся и загрузятся участники этой даты.\n' +
+      (reload ? 'Перезагрузить' : 'Загрузить') + ' «' + name + '»?\n\n«Список», явка и результаты очистятся и загрузятся участники этой даты.\n' +
       'Текущий протокол сначала отправьте в «Базу сдавших» кнопкой «В базу» на странице «Результаты».')) return;
     var notSent = null;
     var started = Date.now();
@@ -629,7 +631,8 @@
       })
       .catch(function (err) {
         if (err.definite || mode !== 'replace') throw err;
-        // Ответ потерялся — проверяем, какая дата теперь загружена
+        if (reload) throw new Error('Сервер не подтвердил перезагрузку. Проверьте список перед повторной попыткой.');
+        // При смене даты проверяем, применилась ли загрузка после потери ответа.
         return requestJSON(datesUrl(), { cache: 'no-store' }, LOAD_TIMEOUT_MS).then(function (res) {
           if (res && res.ok && res.current === name) return { ok: true, mode: 'replace', event: name };
           throw err;
@@ -656,7 +659,6 @@
       .then(function () {
         clearInterval(tick);
         okStatus();
-        evLoadBtn.textContent = 'Загрузить';
         evAppendBtn.classList.remove('spin');
         evLoadBtn.disabled = evSelect.disabled = false;
         updateDateButtons();
@@ -665,7 +667,7 @@
         writeGen++;
         afterSavesSettled();
         if (notSent && window.confirm('Протокол «' + notSent + '» ещё не отправлен в «Базу сдавших».\n' +
-          'Если загрузить новую дату, его участники и результаты пропадут.\n\n' +
+          'Если заново загрузить список, текущая явка и результаты будут сброшены.\n\n' +
           'Отмена — сначала нажмите «В базу» на странице «Результаты».\nОК — всё равно загрузить «' + name + '».')) loadEvent('replace', true);
       });
   }
