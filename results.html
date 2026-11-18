@@ -189,7 +189,6 @@
         <select id="fStupen" aria-label="Ступень"><option value="">Все ступени</option></select>
         <select id="fPol" aria-label="Пол"><option value="">Любой пол</option></select>
         <select id="fClass" aria-label="Класс"><option value="">Все классы</option></select>
-        <select id="fSort" aria-label="Сортировка"></select>
         <label class="chk"><input type="checkbox" id="fHasRes"> только с результатами</label>
         <span class="grow"></span>
         <span class="count" id="count"></span>
@@ -242,14 +241,13 @@
 
   var disciplines = [];   // [{col, name}]
   var data = [];
-  var sortKey = 'fio';    // 'fio' — по алфавиту (по умолчанию) | 'row' — как в таблице | 'num'
   var loading = false;
   var failStreak = 0;
   var lastJSON = '';
 
   var $ = function (id) { return document.getElementById(id); };
   var searchEl = $('search'), tableEl = $('table'), cardsEl = $('cards');
-  var fStupen = $('fStupen'), fPol = $('fPol'), fClass = $('fClass'), fSort = $('fSort'), fHasRes = $('fHasRes');
+  var fStupen = $('fStupen'), fPol = $('fPol'), fClass = $('fClass'), fHasRes = $('fHasRes');
   var refreshBtn = $('refreshBtn'), toastEl = $('toast'), toastTimer;
 
   function el(tag, cls, text) {
@@ -309,12 +307,6 @@
       .map(function (p) { return { value: p, label: p.charAt(0).toUpperCase() + p.slice(1) }; }), true);
     fillSelect(fClass, uniqSorted(data.map(classOf), function (a, b) { return a.localeCompare(b, 'ru', { numeric: true }); })
       .map(function (c) { return { value: c, label: c + ' класс' }; }), true);
-
-    if (!fSort.options.length) {
-      [{ v: 'fio', t: 'По алфавиту' }, { v: 'row', t: 'Как в таблице' }, { v: 'num', t: 'По номеру' }]
-        .forEach(function (o) { var op = el('option', '', o.t); op.value = o.v; fSort.appendChild(op); });
-    }
-    fSort.value = sortKey;
   }
 
   function buildDiscChips() {
@@ -332,11 +324,8 @@
     });
   }
 
-  function setSort(k) {
-    sortKey = k;
-    fSort.value = k;
-    render();
-  }
+  var fioOrder = new Intl.Collator('ru', { sensitivity: 'accent' });
+  function fioName(d) { return String(d.fio || '').replace(/\s+/g, ' ').trim(); }
 
   function filtered() {
     var q = searchEl.value.trim().toLowerCase();
@@ -350,12 +339,7 @@
       return true;
     });
     list.sort(function (a, b) {
-      if (sortKey === 'row') return a.row - b.row;
-      if (sortKey === 'fio') {
-        var x = String(a.fio).toLowerCase().replace(/ё/g, 'е'), y = String(b.fio).toLowerCase().replace(/ё/g, 'е');
-        return x < y ? -1 : x > y ? 1 : 0;
-      }
-      return (+a.num || 0) - (+b.num || 0);
+      return fioOrder.compare(fioName(a), fioName(b));
     });
     return list;
   }
@@ -1497,7 +1481,6 @@
   }
 
   [fStupen, fPol, fClass, fHasRes].forEach(function (s) { s.addEventListener('change', render); });
-  fSort.addEventListener('change', function () { setSort(fSort.value); });
   searchEl.addEventListener('input', render);
   refreshBtn.addEventListener('click', function () { load(true); });
   // «В базу»: все участники протокола дописываются в Google Таблицу «База сдавших» (ниже прежних записей)

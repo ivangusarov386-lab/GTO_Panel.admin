@@ -328,7 +328,8 @@
     return el;
   }
 
-  function fioKey(d) { return String(d.fio || '').toLowerCase().replace(/ё/g, 'е'); }
+  var fioOrder = new Intl.Collator('ru', { sensitivity: 'accent' });
+  function fioName(d) { return String(d.fio || '').replace(/\s+/g, ' ').trim(); }
 
   function render() {
     var q = searchEl.value.trim().toLowerCase();
@@ -343,7 +344,7 @@
       );
     });
     // По алфавиту — и догруженные позже участники встают на своё место
-    filtered.sort(function (a, b) { return fioKey(a) < fioKey(b) ? -1 : fioKey(a) > fioKey(b) ? 1 : 0; });
+    filtered.sort(function (a, b) { return fioOrder.compare(fioName(a), fioName(b)); });
 
     listEl.innerHTML = '';
     emptyMsg.hidden = filtered.length > 0;
