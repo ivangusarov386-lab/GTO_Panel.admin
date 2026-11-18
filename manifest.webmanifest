@@ -1,0 +1,17 @@
+{
+  "id": "./",
+  "name": "Панель ГТО",
+  "short_name": "ГТО",
+  "description": "Сводка регистрации, явка и результаты ГТО",
+  "lang": "ru",
+  "start_url": "./dashboard.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F4F7FB",
+  "theme_color": "#F4F7FB",
+  "icons": [
+    { "src": "./icons/gto-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/gto-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/gto-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
