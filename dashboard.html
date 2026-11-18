@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Панель ГТО</title>
+  <link rel="stylesheet" href="app.css">
+  <style>
+    .dashboard { max-width: 1120px; }
+    .dash-header .hwrap { max-width: 1088px; }
+    .dashboard h1 { margin: 10px 0 18px; font-size: clamp(24px, 4vw, 34px); }
+    .dashboard h2 { margin: 0; font-size: 20px; }
+    .dashboard h3 { margin: 0 0 10px; font-size: 15px; }
+    .dash-section {
+      min-width: 0; padding: clamp(14px, 3vw, 24px); margin-bottom: 16px;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); box-shadow: var(--shadow-sm);
+    }
+    .dash-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+    .dash-heading select { max-width: 100%; min-height: 44px; padding: 8px 10px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; font: inherit; }
+    .dash-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 8px; margin-bottom: 20px; }
+    .dash-card { padding: 12px; background: var(--surface-2); border-radius: 10px; }
+    .dash-card:first-child { background: var(--accent-soft); }
+    .dash-card strong { display: block; font-size: 26px; line-height: 1.15; }
+    .dash-card span, .dash-note { color: var(--muted); font-size: 14px; }
+    .dash-note { margin: 4px 0 16px; }
+    .dash-table { width: 100%; border-collapse: collapse; }
+    .dash-table td, .dash-table th { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
+    .dash-table th:first-child { text-align: left; }
+    .dash-table thead { background: var(--surface-2); font-size: 13px; }
+    .dash-table tbody th { font-weight: 500; }
+    .dash-scroll { overflow: auto; border-radius: 8px; }
+    .dash-scroll table { min-width: 580px; }
+    .dash-date + .dash-date { border-top: 1px solid var(--border); }
+    .dash-date summary { min-height: 46px; padding: 12px 0; cursor: pointer; }
+    .dash-date summary strong { margin-left: 5px; }
+    .dash-date summary span { float: right; padding-left: 8px; color: var(--muted); }
+    .dash-date table { margin-bottom: 10px; }
+    .dash-header .btn { min-height: 44px; }
+    @media (max-width: 520px) {
+      .dash-header .titlebar { flex-wrap: wrap; }
+      .dash-header .tabs a { min-height: 38px; }
+    }
+  </style>
+  <script src="dashboard.js" defer></script>
+</head>
+<body data-default-api="https://script.google.com/macros/s/AKfycbzUX-JIhoZRpt_FiNAZGpMI0p0bbGNarGGp6Q9y2NXflc6O9cHDYVoKJq2CPIZ5JSbR/exec">
+  <header class="dash-header">
+    <div class="hwrap">
+      <div class="titlebar">
+        <div class="brand">
+          <div class="logo">ГТО</div>
+          <nav class="tabs" aria-label="Разделы">
+            <a href="index.html">Явка</a>
+            <a href="results.html">Результаты</a>
+            <a href="dashboard.html" aria-current="page">Панель</a>
+          </nav>
+        </div>
+        <button type="button" class="btn" id="dashboardRefresh">Обновить</button>
+      </div>
+    </div>
+  </header>
+  <main class="dashboard">
+    <h1>Панель ГТО</h1>
+    <p id="dashboardStatus" class="dash-note" role="status"></p>
+    <section class="dash-section" aria-labelledby="baseTitle">
+      <div class="dash-heading">
+        <h2 id="baseTitle">База сдавших</h2>
+        <select id="baseYear" aria-label="Лист базы за учебный год" hidden></select>
+      </div>
+      <div id="baseSummary"></div>
+    </section>
+    <section class="dash-section" aria-labelledby="registrationTitle">
+      <div class="dash-heading"><h2 id="registrationTitle">Регистрация по датам</h2></div>
+      <div id="registrationSummary"></div>
+    </section>
+  </main>
+</body>
+</html>

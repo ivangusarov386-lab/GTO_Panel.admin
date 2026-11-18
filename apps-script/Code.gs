@@ -30,6 +30,7 @@ var RESULT_SHEETS = ['отжимание', 'подтягивание', 'прыж
 
 function doGet(e) {
   var view = e && e.parameter && e.parameter.view;
+  if (view === 'dashboard') return jsonOut(getDashboard());
   if (view === 'results') return jsonOut(getResults());
   if (view === 'dates') {
     try { return jsonOut(listDates()); } catch (err) { return jsonOut({ ok: false, error: String(err) }); }
@@ -220,6 +221,96 @@ function listDates() {
     if (count) dates.push({ name: name, count: count });
   });
   return { ok: true, dates: dates, current: currentEvent() };
+}
+
+// Сводка для панели. В ответе только названия групп и счётчики.
+function getDashboard() {
+  var out = { ok: true };
+  try {
+    out.registration = { dates: registrationSummary() };
+  } catch (err) {
+    out.registration = { error: 'Не удалось прочитать «Регистрацию ГТО».' };
+  }
+  try {
+    out.base = { years: baseSummary() };
+  } catch (err) {
+    out.base = { error: 'Не удалось прочитать «Базу сдавших».' };
+  }
+  return out;
+}
+
+function summaryClass(klass, letter) {
+  var name = (String(klass || '') + ' ' + String(letter || '')).trim().replace(/\s+/g, ' ');
+  var parts = name.match(/^(\d+)\s*(?:класс\s*)?([а-яё])?$/i);
+  return parts ? parts[1] + (parts[2] ? ' ' + parts[2].toUpperCase() : '') : name || 'Без класса';
+}
+
+function registrationSummary() {
+  var reg = SpreadsheetApp.openById(REG_SPREADSHEET_ID);
+  return reg.getSheets().reduce(function (dates, sh) {
+    var name = sh.getName();
+    if (REG_SKIP_SHEETS.indexOf(name.trim().toLowerCase()) !== -1) return dates;
+    var people = readRegistration(sh);
+    if (!people.length) return dates;
+    var classes = Object.create(null);
+    people.forEach(function (p) {
+      var cls = summaryClass(p.klass, p.letter);
+      classes[cls] = (classes[cls] || 0) + 1;
+    });
+    dates.push({ name: name, count: people.length, classes: classes });
+    return dates;
+  }, []);
+}
+
+function badgeSummaryCounts() {
+  return { took: 0, gold: 0, silver: 0, bronze: 0, noBadge: 0 };
+}
+
+function baseSummary() {
+  var base = SpreadsheetApp.openById(BASE_SPREADSHEET_ID);
+  var sheets = base.getSheets().filter(isBaseSheet);
+  if (!sheets.length) sheets = base.getSheets().slice(0, 1);
+  var map = Object.create(null);
+  getNorms().forEach(function (n) { map[n.key] = n; });
+  var head = getSheet().getRange(1, COL_RES_FIRST, 1, COL_RES_LAST - COL_RES_FIRST + 1)
+    .getDisplayValues()[0].map(normKeyPart);
+
+  return sheets.reduce(function (years, sh) {
+    var lay = baseLayout(sh, head);
+    if (lay.fio === -1 || !lay.res.length) return years;
+    var last = baseLastRow(sh, lay);
+    var people = Object.create(null);
+    var data = last > 1 ? sh.getRange(2, 1, last - 1, lay.width).getDisplayValues() : [];
+    data.forEach(function (r) {
+      var fio = String(r[lay.fio]).trim();
+      if (!fio) return;
+      var levels = baseResultLevels(lay, r, map);
+      if (!levels.some(function (x) { return x.has; })) return;
+      var key = String(r[lay.uin] || '').replace(/\D/g, '') || fio.toLowerCase().replace(/\s+/g, ' ');
+      var p = people[key] || (people[key] = { lv: {}, stage: '', cls: 'Без класса' });
+      var stage = String(r[lay.st] || '').trim().split(' ')[0].toUpperCase();
+      if (stage) p.stage = stage;
+      if (r[lay.cls]) p.cls = summaryClass(r[lay.cls]);
+      levels.forEach(function (x, j) {
+        if (!x.has) return;
+        var test = lay.head[lay.res[j]];
+        p.lv[test] = Math.max(p.lv[test] || 0, x.lvl);
+      });
+    });
+
+    var total = badgeSummaryCounts(), classes = Object.create(null);
+    Object.keys(people).forEach(function (key) {
+      var p = people[key];
+      var cls = classes[p.cls] || (classes[p.cls] = badgeSummaryCounts());
+      var badge = ['noBadge', 'bronze', 'silver', 'gold'][gtoBadge(p.stage, p.lv)];
+      total.took++;
+      total[badge]++;
+      cls.took++;
+      cls[badge]++;
+    });
+    years.push({ name: sh.getName(), total: total, classes: classes });
+    return years;
+  }, []);
 }
 
 function readRegistration(sh) {
@@ -432,6 +523,22 @@ function baseLastRow(bs, lay) {
   return 1;
 }
 
+function baseResultLevels(lay, r, map) {
+  var st = (String(r[lay.st] || '').trim().split(' ')[0] || '').toUpperCase();
+  var prefix = st + '|' + normKeyPart(r[lay.pol]) + '|';
+  return lay.res.map(function (c) {
+    var nr = map[prefix + lay.head[c]], v = String(r[c]).trim();
+    if (!nr || v === '') return { lvl: 0, has: v !== '', name: nr ? (nr.name || lay.head[c]) : '' };
+    var x = normValue(v, nr.fmt), lvl = 0;
+    if (x !== '') {
+      var up = nr.dir === 'больше';
+      var ok = function (t) { return typeof t === 'number' && (up ? x >= t : x <= t); };
+      lvl = ok(nr.g) ? 3 : ok(nr.s) ? 2 : ok(nr.b) ? 1 : 0;
+    }
+    return { lvl: lvl, has: true, name: nr.name || lay.head[c] };
+  });
+}
+
 // Подсветка знаков на листе базы и аналитика справа от данных (как в выгрузке). Пересчитывается целиком.
 function refreshBaseSheet(bs) {
   var lay = baseLayout(bs);
@@ -449,21 +556,7 @@ function refreshBaseSheet(bs) {
   var colors = { 3: BADGE_COLORS[3], 2: BADGE_COLORS[2], 1: BADGE_COLORS[1] };
 
   // уровни знаков
-  var levels = data.map(function (r) {
-    var st = (String(r[lay.st] || '').trim().split(' ')[0] || '').toUpperCase();
-    var prefix = st + '|' + normKeyPart(r[lay.pol]) + '|';
-    return lay.res.map(function (c) {
-      var nr = map[prefix + lay.head[c]], v = String(r[c]).trim();
-      if (!nr || v === '') return { lvl: 0, has: v !== '', name: nr ? (nr.name || lay.head[c]) : '' };
-      var x = normValue(v, nr.fmt), lvl = 0;
-      if (x !== '') {
-        var up = nr.dir === 'больше';
-        var ok = function (t) { return typeof t === 'number' && (up ? x >= t : x <= t); };
-        lvl = ok(nr.g) ? 3 : ok(nr.s) ? 2 : ok(nr.b) ? 1 : 0;
-      }
-      return { lvl: lvl, has: true, name: nr.name || lay.head[c] };
-    });
-  });
+  var levels = data.map(function (r) { return baseResultLevels(lay, r, map); });
   if (n > 0 && lay.res.length) {
     var r0 = lay.res[0], r1 = lay.res[lay.res.length - 1];
     var rg = bs.getRange(2, r0 + 1, n, r1 - r0 + 1);
