@@ -34,7 +34,11 @@ function classTable(columns, rows) {
     const name = element('th', label);
     name.scope = 'row';
     row.append(name);
-    counts.forEach(count => row.insertCell().textContent = number.format(count));
+    counts.forEach(count => {
+      const cell = row.insertCell();
+      cell.className = 'mono';
+      cell.textContent = number.format(count);
+    });
   });
   return table;
 }
@@ -47,7 +51,7 @@ function renderRegistration(registration) {
   registrationView.replaceChildren(...registration.dates.map(date => {
     const details = element('details', '', 'dash-date');
     const summary = element('summary');
-    summary.append(element('strong', date.name), element('span', number.format(date.count) + ' чел.'));
+    summary.append(element('strong', date.name), element('span', number.format(date.count) + ' чел.', 'mono'));
     details.append(summary, classTable(['Зарегистрировано'], Object.entries(date.classes)));
     return details;
   }));
@@ -56,29 +60,47 @@ function renderRegistration(registration) {
 function renderBase() {
   const year = years[Number(yearSelect.value)];
   if (!year) return;
-  const cards = element('div', '', 'dash-cards');
+  const cards = element('div', '', 'stats dash-cards');
   badgeColumns.forEach(([key, label]) => {
-    const card = element('div', '', 'dash-card');
-    card.append(element('strong', number.format(year.total[key])), element('span', label));
+    const card = element('div', '', 'stat dash-card ' + key);
+    card.append(element('span', label, 'lbl'), element('b', number.format(year.total[key]), 'mono'));
     cards.append(card);
+  });
+  const distribution = element('div', '', 'dash-distribution');
+  distribution.setAttribute('aria-hidden', 'true');
+  badgeColumns.slice(1).forEach(([key]) => {
+    const count = year.total[key];
+    if (!count) return;
+    const segment = element('span', '', 'dash-color ' + key);
+    segment.style.flexGrow = count;
+    distribution.append(segment);
   });
   const rows = Object.entries(year.classes).map(([name, tally]) =>
     [name, ...badgeColumns.map(([key]) => tally[key])]
   );
+  const note = element('p', 'Участники с результатами хотя бы одного испытания. Повторные сдачи за учебный год учтены один раз.', 'dash-note');
+  baseView.replaceChildren(cards);
+  if (!rows.length) {
+    baseView.append(element('p', 'В этом разделе базы пока нет результатов.', 'dash-note'));
+    return;
+  }
   const tableArea = element('div', '', 'dash-scroll');
   tableArea.tabIndex = 0;
-  tableArea.setAttribute('aria-label', 'Результаты по классам');
-  if (rows.length) tableArea.append(classTable(badgeColumns.map(([, label]) => label), rows));
-  else tableArea.append(element('p', 'В этом разделе базы пока нет результатов.', 'dash-note'));
-  const note = element('p', 'Участники с результатами хотя бы одного испытания. Повторные сдачи за учебный год учтены один раз.', 'dash-note');
-  baseView.replaceChildren(cards, note, element('h3', 'По классам'), tableArea);
+  tableArea.setAttribute('role', 'region');
+  tableArea.setAttribute('aria-labelledby', 'baseClassesTitle');
+  tableArea.append(classTable(badgeColumns.map(([, label]) => label), rows));
+  const heading = element('h3', 'По классам');
+  heading.id = 'baseClassesTitle';
+  baseView.append(distribution, note, heading, tableArea);
 }
 
 function loadBase(base) {
   const previous = years[Number(yearSelect.value)]?.name;
   years = (base.years || []).slice().reverse();
   yearSelect.hidden = !years.length;
-  yearSelect.replaceChildren(...years.map((year, i) => new Option(year.name, i)));
+  yearSelect.replaceChildren(...years.map((year, i) =>
+    new Option(year.name.replace(/^База сдавших\s+(?=\d)/i, ''), i)
+  ));
   const selected = years.findIndex(year => year.name === previous);
   if (selected >= 0) yearSelect.value = selected;
   if (years.length) renderBase();

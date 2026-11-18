@@ -4,42 +4,90 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Панель ГТО</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="app.css">
   <style>
-    .dashboard { max-width: 1120px; }
-    .dash-header .hwrap { max-width: 1088px; }
-    .dashboard h1 { margin: 10px 0 18px; font-size: clamp(24px, 4vw, 34px); }
-    .dashboard h2 { margin: 0; font-size: 20px; }
-    .dashboard h3 { margin: 0 0 10px; font-size: 15px; }
+    .dashboard { max-width: 1172px; padding-top: clamp(20px, 4vw, 36px); }
+    .dash-header .hwrap { max-width: 1140px; }
+    .dash-header .iconbtn { width: 44px; height: 44px; }
+    .dash-header .iconbtn:disabled { opacity: .6; cursor: wait; }
+    .dash-header .iconbtn:disabled svg { animation: spin 1s linear infinite; }
+    .dashboard h1 { margin: 0 0 18px; font-size: clamp(24px, 4vw, 34px); }
+    .dashboard h2 { margin: 0; font-size: 19px; letter-spacing: -.015em; }
+    .dashboard h3 { margin: 0 0 10px; font-size: 14px; }
+
+    .dash-layout { display: grid; gap: 14px; align-items: start; }
     .dash-section {
-      min-width: 0; padding: clamp(14px, 3vw, 24px); margin-bottom: 16px;
+      min-width: 0; padding: clamp(14px, 2vw, 20px);
       border: 1px solid var(--border); border-radius: var(--radius);
-      background: var(--surface); box-shadow: var(--shadow-sm);
+      background: var(--surface); box-shadow: var(--shadow);
     }
-    .dash-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-    .dash-heading select { max-width: 100%; min-height: 44px; padding: 8px 10px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; font: inherit; }
-    .dash-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 8px; margin-bottom: 20px; }
-    .dash-card { padding: 12px; background: var(--surface-2); border-radius: 10px; }
-    .dash-card:first-child { background: var(--accent-soft); }
-    .dash-card strong { display: block; font-size: 26px; line-height: 1.15; }
-    .dash-card span, .dash-note { color: var(--muted); font-size: 14px; }
-    .dash-note { margin: 4px 0 16px; }
-    .dash-table { width: 100%; border-collapse: collapse; }
-    .dash-table td, .dash-table th { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
+    .dash-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 14px; }
+    .dash-heading select {
+      max-width: 100%; min-height: 44px; padding: 8px 10px; color: var(--ink);
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 11px; font: inherit; font-size: 13.5px;
+    }
+    .dash-cards { grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0; }
+    .dash-card { --c: var(--muted); background: color-mix(in srgb, var(--c) 6%, var(--surface)); }
+    .dash-card.took { --c: var(--present); }
+    .dash-card.gold, .dash-color.gold { --c: #FFD966; }
+    .dash-card.silver, .dash-color.silver { --c: #D9D9D9; }
+    .dash-card.bronze, .dash-color.bronze { --c: #F4B183; }
+    .dash-card b { color: var(--ink); font-size: clamp(20px, 3vw, 28px); }
+    .dash-card .lbl { font-size: 12px; }
+    .dash-distribution {
+      display: flex; gap: 2px; overflow: hidden; height: 6px;
+      margin-top: 12px; border-radius: 999px; background: var(--surface-2);
+    }
+    .dash-distribution span { background: var(--c, var(--border)); border-radius: 999px; }
+    .dash-note { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 10px 0 16px; }
+    .dash-note:empty { display: none; }
+    .dash-note:last-child { margin-bottom: 0; }
+
+    .dash-scroll {
+      overflow: auto; border: 1px solid var(--border);
+      border-radius: 11px; scrollbar-color: var(--border) var(--surface);
+    }
+    .dash-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    .dash-table td, .dash-table th { padding: 9px 8px; border-bottom: 1px solid var(--border); text-align: right; }
     .dash-table th:first-child { text-align: left; }
-    .dash-table thead { background: var(--surface-2); font-size: 13px; }
-    .dash-table tbody th { font-weight: 500; }
-    .dash-scroll { overflow: auto; border-radius: 8px; }
-    .dash-scroll table { min-width: 580px; }
-    .dash-date + .dash-date { border-top: 1px solid var(--border); }
-    .dash-date summary { min-height: 46px; padding: 12px 0; cursor: pointer; }
-    .dash-date summary strong { margin-left: 5px; }
-    .dash-date summary span { float: right; padding-left: 8px; color: var(--muted); }
-    .dash-date table { margin-bottom: 10px; }
-    .dash-header .btn { min-height: 44px; }
-    @media (max-width: 520px) {
-      .dash-header .titlebar { flex-wrap: wrap; }
-      .dash-header .tabs a { min-height: 38px; }
+    .dash-table thead { background: var(--surface-2); font-size: 12px; color: var(--muted); }
+    .dash-table tbody th { font-weight: 600; }
+    .dash-table tbody tr:last-child > * { border-bottom: 0; }
+    .dash-table tbody tr:hover { background: var(--surface-2); }
+
+    .dash-date { border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
+    .dash-date + .dash-date { margin-top: 8px; }
+    .dash-date summary {
+      min-height: 48px; padding: 10px 12px; cursor: pointer; background: var(--surface-2);
+      display: flex; gap: 8px; align-items: center; font-size: 14px; list-style: none;
+    }
+    .dash-date summary::-webkit-details-marker { display: none; }
+    .dash-date summary::before {
+      content: ""; width: 6px; height: 6px; flex: none;
+      border: solid var(--muted); border-width: 0 2px 2px 0;
+      transform: rotate(-45deg); margin-right: 3px;
+    }
+    .dash-date[open] summary::before { transform: rotate(45deg); }
+    .dash-date summary:focus-visible { outline-offset: -3px; }
+    .dash-date summary strong { overflow-wrap: anywhere; min-width: 0; }
+    .dash-date summary span {
+      margin-left: auto; padding: 3px 7px; border-radius: 8px; white-space: nowrap;
+      background: var(--accent-soft); color: var(--ink); font-size: 12px; font-weight: 600;
+    }
+    .dash-date table { border-top: 1px solid var(--border); }
+
+    @media (min-width: 1000px) {
+      .dash-layout { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+    }
+    @media (max-width: 540px) {
+      .dash-scroll .dash-table :is(th, td) { padding-inline: 4px; }
+      .dash-cards { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+      .dash-card { grid-column: span 2; }
+      .dash-card:nth-child(-n+2) { grid-column: span 3; }
     }
   </style>
   <script src="dashboard.js" defer></script>
@@ -51,29 +99,33 @@
         <div class="brand">
           <div class="logo">ГТО</div>
           <nav class="tabs" aria-label="Разделы">
+            <a href="dashboard.html" aria-current="page">Панель</a>
             <a href="index.html">Явка</a>
             <a href="results.html">Результаты</a>
-            <a href="dashboard.html" aria-current="page">Панель</a>
           </nav>
         </div>
-        <button type="button" class="btn" id="dashboardRefresh">Обновить</button>
+        <button type="button" class="iconbtn" id="dashboardRefresh" aria-label="Обновить" title="Обновить сводку">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        </button>
       </div>
     </div>
   </header>
   <main class="dashboard">
     <h1>Панель ГТО</h1>
     <p id="dashboardStatus" class="dash-note" role="status"></p>
-    <section class="dash-section" aria-labelledby="baseTitle">
-      <div class="dash-heading">
-        <h2 id="baseTitle">База сдавших</h2>
-        <select id="baseYear" aria-label="Лист базы за учебный год" hidden></select>
-      </div>
-      <div id="baseSummary"></div>
-    </section>
-    <section class="dash-section" aria-labelledby="registrationTitle">
-      <div class="dash-heading"><h2 id="registrationTitle">Регистрация по датам</h2></div>
-      <div id="registrationSummary"></div>
-    </section>
+    <div class="dash-layout">
+      <section class="dash-section" aria-labelledby="baseTitle">
+        <div class="dash-heading">
+          <h2 id="baseTitle">База сдавших</h2>
+          <select id="baseYear" aria-label="Лист базы за учебный год" hidden></select>
+        </div>
+        <div id="baseSummary"></div>
+      </section>
+      <section class="dash-section" aria-labelledby="registrationTitle">
+        <div class="dash-heading"><h2 id="registrationTitle">Регистрация по датам</h2></div>
+        <div id="registrationSummary"></div>
+      </section>
+    </div>
   </main>
 </body>
 </html>
