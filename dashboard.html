@@ -60,7 +60,12 @@
     .dash-table tbody tr:hover { background: var(--surface-2); }
 
     .dash-date { border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
-    .dash-date + .dash-date { margin-top: 8px; }
+    #registrationSummary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+      gap: 8px; align-items: start;
+    }
+    #registrationSummary > .dash-note { grid-column: 1 / -1; }
     .dash-date summary {
       min-height: 48px; padding: 10px 12px; cursor: pointer; background: var(--surface-2);
       display: flex; gap: 8px; align-items: center; font-size: 14px; list-style: none;
@@ -80,9 +85,6 @@
     }
     .dash-date table { border-top: 1px solid var(--border); }
 
-    @media (min-width: 1000px) {
-      .dash-layout { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
-    }
     @media (max-width: 540px) {
       .dash-scroll .dash-table :is(th, td) { padding-inline: 4px; }
       .dash-cards { grid-template-columns: repeat(6, minmax(0, 1fr)); }
@@ -128,16 +130,16 @@
     <h1>Панель ГТО</h1>
     <p id="dashboardStatus" class="dash-note" role="status"></p>
     <div class="dash-layout">
+      <section class="dash-section" aria-labelledby="registrationTitle">
+        <div class="dash-heading"><h2 id="registrationTitle">Регистрация по датам</h2></div>
+        <div id="registrationSummary"></div>
+      </section>
       <section class="dash-section" aria-labelledby="baseTitle">
         <div class="dash-heading">
           <h2 id="baseTitle">База сдавших</h2>
           <select id="baseYear" aria-label="Лист базы за учебный год" hidden></select>
         </div>
         <div id="baseSummary"></div>
-      </section>
-      <section class="dash-section" aria-labelledby="registrationTitle">
-        <div class="dash-heading"><h2 id="registrationTitle">Регистрация по датам</h2></div>
-        <div id="registrationSummary"></div>
       </section>
     </div>
   </main>
