@@ -13,6 +13,26 @@ const badgeColumns = [
 ];
 let years = [];
 let dateToClose = null;
+const cacheKey = 'gto_dashboard_snapshot_v1';
+let snapshot = {};
+let registrationVersion = 0;
+
+function readSnapshot(endpoint) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(cacheKey));
+    if (saved?.endpoint === endpoint.href) {
+      return {
+        registration: Array.isArray(saved.registration?.dates) ? saved.registration : undefined,
+        base: Array.isArray(saved.base?.years) ? saved.base : undefined
+      };
+    }
+  } catch (error) {}
+  return {};
+}
+
+function saveSnapshot(endpoint) {
+  try { localStorage.setItem(cacheKey, JSON.stringify({ endpoint: endpoint.href, ...snapshot })); } catch (error) {}
+}
 const closeDialog = document.getElementById('closeRegistrationDialog');
 const closeForm = document.getElementById('closeRegistrationForm');
 const closeCode = document.getElementById('closeRegistrationCode');
@@ -55,13 +75,17 @@ function classTable(columns, rows) {
   return table;
 }
 
-function renderRegistration(registration) {
+function renderRegistration(registration, fresh = true) {
   if (registration.error || !registration.dates.length) {
     registrationView.replaceChildren(element('p', registration.error || 'Нет записей о регистрации.', 'dash-note'));
     return;
   }
+  const expanded = new Set(Array.from(registrationView.querySelectorAll('details[open]'),
+    details => details.dataset.date));
   registrationView.replaceChildren(...registration.dates.map(date => {
     const details = element('details', '', 'dash-date');
+    details.dataset.date = String(date.sheetId ?? date.name);
+    details.open = expanded.has(details.dataset.date);
     const summary = element('summary');
     summary.append(element('strong', date.name), element('span', number.format(date.count) + ' чел.', 'mono'));
     details.append(summary);
@@ -69,7 +93,7 @@ function renderRegistration(registration) {
     else details.append(element('p', 'Пока нет заявок.', 'dash-note'));
     const card = element('div', '', 'dash-date-card');
     card.append(details);
-    if (typeof date.closed === 'boolean') {
+    if (date.closed === true || (fresh && date.closed === false)) {
       const actions = element('div', '', 'dash-date-actions');
       renderDateAction(actions, date);
       card.append(actions);
@@ -124,10 +148,16 @@ closeForm.addEventListener('submit', async event => {
       closeCode.focus();
       return;
     }
+    registrationVersion++;
     date.closed = true;
+    const savedDate = snapshot.registration?.dates.find(item => item.sheetId === date.sheetId);
+    if (savedDate) {
+      savedDate.closed = true;
+      saveSnapshot(endpoint);
+    }
     closeDialog.close();
     if (actions.isConnected) renderDateAction(actions, date);
-    else loadDashboard();
+    else if (snapshot.registration) renderRegistration(snapshot.registration);
   } catch (error) {
     closeError.textContent = 'Связь прервалась. Проверьте состояние даты перед повторной попыткой.';
   } finally {
@@ -192,23 +222,51 @@ function loadBase(base) {
 }
 
 async function loadDashboard() {
+  if (refreshButton.disabled) return;
   refreshButton.disabled = true;
-  statusMessage.textContent = 'Загрузка сводки…';
+  const version = registrationVersion;
+  const hasSnapshot = Boolean(snapshot.registration || snapshot.base);
+  statusMessage.textContent = hasSnapshot ? 'Обновляем сводку…' : 'Загрузка сводки…';
   try {
-    const url = dashboardEndpoint();
+    const endpoint = dashboardEndpoint();
+    const url = new URL(endpoint);
     url.searchParams.set('view', 'dashboard');
     const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(25000) });
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const data = await response.json();
     if (!data.ok || !data.registration || !data.base) {
-      statusMessage.textContent = 'Сводка недоступна. Проверьте, что в главном протоколе развёрнута версия Apps Script с панелью.';
+      statusMessage.textContent = 'Сводка недоступна. Проверьте развёртывание Apps Script в главном протоколе.';
+      if (hasSnapshot) statusMessage.textContent += ' Показаны сохранённые данные.';
       return;
     }
-    renderRegistration(data.registration);
-    loadBase(data.base);
-    statusMessage.textContent = '';
+
+    const registrationOK = !data.registration.error && Array.isArray(data.registration.dates);
+    const baseOK = !data.base.error && Array.isArray(data.base.years);
+    if (registrationOK && version === registrationVersion) {
+      snapshot.registration = data.registration;
+      renderRegistration(snapshot.registration);
+    } else if (!registrationOK && !snapshot.registration) {
+      renderRegistration({ error: 'Не удалось обновить регистрацию.' });
+    }
+    if (baseOK) {
+      snapshot.base = data.base;
+      loadBase(snapshot.base);
+    } else if (!snapshot.base) {
+      loadBase({ error: 'Не удалось обновить базу.' });
+    }
+    if (registrationOK || baseOK) saveSnapshot(endpoint);
+
+    const failed = [];
+    if (!registrationOK) failed.push('регистрацию');
+    if (!baseOK) failed.push('базу');
+    const kept = (!registrationOK && snapshot.registration) || (!baseOK && snapshot.base);
+    statusMessage.textContent = failed.length
+      ? 'Не удалось обновить ' + failed.join(' и ') + '.' + (kept ? ' Показаны сохранённые данные.' : '')
+      : '';
   } catch (error) {
-    statusMessage.textContent = 'Связь с таблицами недоступна. Нажмите «Обновить», чтобы повторить запрос.';
+    statusMessage.textContent = hasSnapshot
+      ? 'Не удалось обновить сводку. Показаны сохранённые данные.'
+      : 'Связь с таблицами недоступна. Нажмите «Обновить», чтобы повторить запрос.';
   } finally {
     refreshButton.disabled = false;
   }
@@ -216,4 +274,8 @@ async function loadDashboard() {
 
 yearSelect.addEventListener('change', renderBase);
 refreshButton.addEventListener('click', loadDashboard);
+window.addEventListener('pageshow', event => { if (event.persisted) loadDashboard(); });
+try { snapshot = readSnapshot(dashboardEndpoint()); } catch (error) {}
+if (snapshot.registration) renderRegistration(snapshot.registration, false);
+if (snapshot.base) loadBase(snapshot.base);
 loadDashboard();
