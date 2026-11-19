@@ -59,7 +59,7 @@
     .dash-table tbody tr:last-child > * { border-bottom: 0; }
     .dash-table tbody tr:hover { background: var(--surface-2); }
 
-    .dash-date { border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
+    .dash-date-card { border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
     #registrationSummary {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
@@ -84,6 +84,26 @@
       background: var(--accent-soft); color: var(--ink); font-size: 12px; font-weight: 600;
     }
     .dash-date table { border-top: 1px solid var(--border); }
+    .dash-date-actions {
+      display: flex; align-items: center; justify-content: flex-end;
+      padding: 6px 10px; border-top: 1px solid var(--border);
+    }
+    .dash-date-actions .btn, .close-actions .btn { min-height: 44px; }
+    .dash-date-state { font-size: 13px; color: var(--muted); }
+    .close-dialog {
+      width: min(440px, calc(100% - 32px)); padding: 20px;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg);
+    }
+    .close-dialog::backdrop { background: #0008; }
+    .close-dialog h2 { margin: 0; font-size: 20px; }
+    .close-dialog label { display: grid; gap: 6px; font-size: 14px; font-weight: 600; }
+    .close-dialog input {
+      min-height: 44px; padding: 8px 10px; font: inherit;
+      border: 1px solid var(--border); border-radius: 11px; background: var(--surface-2); color: var(--ink);
+    }
+    .close-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+    #closeRegistrationError { color: var(--danger); }
 
     @media (max-width: 540px) {
       .dash-scroll .dash-table :is(th, td) { padding-inline: 4px; }
@@ -96,7 +116,7 @@
       .dash-header:has(.install-app:not([hidden])) .titlebar { flex-wrap: wrap; }
     }
   </style>
-  <script src="dashboard.js?v=1081ce6c03c0" defer></script>
+  <script src="dashboard.js?v=3342bf6e4d7d" defer></script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="192x192" href="icons/gto-192.png">
   <link rel="apple-touch-icon" href="icons/gto-apple-touch.png">
@@ -143,5 +163,19 @@
       </section>
     </div>
   </main>
+  <dialog class="close-dialog" id="closeRegistrationDialog" aria-labelledby="closeRegistrationTitle">
+    <form id="closeRegistrationForm">
+      <h2 id="closeRegistrationTitle">Закрыть регистрацию</h2>
+      <p id="closeRegistrationDescription" class="dash-note"></p>
+      <label>Код администратора
+        <input id="closeRegistrationCode" type="password" required autocomplete="off" autofocus>
+      </label>
+      <p id="closeRegistrationError" role="alert" class="dash-note"></p>
+      <div class="close-actions">
+        <button type="button" class="btn" id="cancelCloseRegistration">Отмена</button>
+        <button type="submit" class="btn primary">Закрыть</button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>

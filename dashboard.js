@@ -12,6 +12,18 @@ const badgeColumns = [
   ['bronze', 'Бронза'], ['noBadge', 'Без знака']
 ];
 let years = [];
+let dateToClose = null;
+const closeDialog = document.getElementById('closeRegistrationDialog');
+const closeForm = document.getElementById('closeRegistrationForm');
+const closeCode = document.getElementById('closeRegistrationCode');
+const closeError = document.getElementById('closeRegistrationError');
+const cancelClose = document.getElementById('cancelCloseRegistration');
+
+function dashboardEndpoint() {
+  let endpoint = document.body.dataset.defaultApi;
+  try { endpoint = localStorage.getItem('gto_apps_script_url') || endpoint; } catch (error) {}
+  return new URL(endpoint);
+}
 
 function element(tag, text = '', className = '') {
   const node = document.createElement(tag);
@@ -52,10 +64,82 @@ function renderRegistration(registration) {
     const details = element('details', '', 'dash-date');
     const summary = element('summary');
     summary.append(element('strong', date.name), element('span', number.format(date.count) + ' чел.', 'mono'));
-    details.append(summary, classTable(['Зарегистрировано'], Object.entries(date.classes)));
-    return details;
+    details.append(summary);
+    if (date.count) details.append(classTable(['Зарегистрировано'], Object.entries(date.classes)));
+    else details.append(element('p', 'Пока нет заявок.', 'dash-note'));
+    const card = element('div', '', 'dash-date-card');
+    card.append(details);
+    if (typeof date.closed === 'boolean') {
+      const actions = element('div', '', 'dash-date-actions');
+      renderDateAction(actions, date);
+      card.append(actions);
+    }
+    return card;
   }));
 }
+
+function renderDateAction(actions, date) {
+  if (date.closed) {
+    actions.replaceChildren(element('span', 'Запись закрыта', 'dash-date-state'));
+    return;
+  }
+  const button = element('button', 'Закрыть', 'btn');
+  button.type = 'button';
+  button.setAttribute('aria-label', 'Закрыть запись на ' + date.name);
+  button.addEventListener('click', () => {
+    dateToClose = { date, actions };
+    closeForm.reset();
+    closeError.textContent = '';
+    document.getElementById('closeRegistrationDescription').textContent =
+      date.name + '. Новые заявки на эту дату перестанут приниматься. Поданные заявки сохранятся.';
+    closeDialog.showModal();
+  });
+  actions.replaceChildren(button);
+}
+
+closeForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const { date, actions } = dateToClose;
+  const submit = closeForm.querySelector('[type=submit]');
+  submit.disabled = cancelClose.disabled = true;
+  closeError.textContent = '';
+  const code = closeCode.value;
+  closeCode.value = '';
+  try {
+    const endpoint = dashboardEndpoint();
+    if (endpoint.origin !== 'https://script.google.com') {
+      closeError.textContent = 'Для закрытия укажите HTTPS-адрес Google Apps Script.';
+      return;
+    }
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'closeRegistration', sheetId: date.sheetId, code }),
+      signal: AbortSignal.timeout(25000)
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const result = await response.json();
+    if (!result.ok || result.closed !== true) {
+      closeError.textContent = result.error || 'Сервер не подтвердил закрытие.';
+      closeCode.focus();
+      return;
+    }
+    date.closed = true;
+    closeDialog.close();
+    if (actions.isConnected) renderDateAction(actions, date);
+    else loadDashboard();
+  } catch (error) {
+    closeError.textContent = 'Связь прервалась. Проверьте состояние даты перед повторной попыткой.';
+  } finally {
+    submit.disabled = cancelClose.disabled = false;
+  }
+});
+
+cancelClose.addEventListener('click', () => closeDialog.close());
+closeDialog.addEventListener('cancel', event => {
+  if (cancelClose.disabled) event.preventDefault();
+});
+closeDialog.addEventListener('close', () => closeForm.reset());
 
 function renderBase() {
   const year = years[Number(yearSelect.value)];
@@ -111,9 +195,7 @@ async function loadDashboard() {
   refreshButton.disabled = true;
   statusMessage.textContent = 'Загрузка сводки…';
   try {
-    let endpoint = document.body.dataset.defaultApi;
-    try { endpoint = localStorage.getItem('gto_apps_script_url') || endpoint; } catch (error) {}
-    const url = new URL(endpoint);
+    const url = dashboardEndpoint();
     url.searchParams.set('view', 'dashboard');
     const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(25000) });
     if (!response.ok) throw new Error('HTTP ' + response.status);

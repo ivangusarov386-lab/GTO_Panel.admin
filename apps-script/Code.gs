@@ -19,6 +19,10 @@ var COL_LETTER = 19;    // S — буква класса
 
 // Таблица «Регистрация ГТО»: лист на каждую дату, столбцы A:G — №, ФИО, УИН, Ступень, пол, класс, Буква
 var REG_SPREADSHEET_ID = '1jjEFzNrZcsTDyyhd05oN8iIvo7scwmK0E57YhGEnNL8';
+var REG_DATE_RE = /^\d{2}\.\d{2}\.\d{2}\b/;
+var REG_CLOSED_RE = /\s*\[?\s*закрыт[а-я]*\s*\]?/i;
+var REG_CLOSED_MARK = ' [закрыто]';
+var REG_ADMIN_CODE = 'GTO_REGISTRATION_ADMIN_CODE';
 var REG_SKIP_SHEETS = ['основной'];          // шаблон, не дата
 var CONTROL_SHEET = 'управление';            // сюда пишется, какая дата загружена
 // Google Таблица «База сдавших»: кнопка «В базу» дописывает туда всех участников текущей даты
@@ -68,6 +72,7 @@ function doPost(e) {
   try {
     var params = JSON.parse(e.postData.contents);
     lock.waitLock(params.action === 'loadDate' || params.action === 'import' || params.action === 'toBase' ? 30000 : 10000);
+    if (params.action === 'closeRegistration') return jsonOut(closeRegistrationDate(params));
     if (params.action === 'add') return jsonOut(addParticipant(params));
     if (params.action === 'loadDate') return jsonOut(loadDate(params.sheet, params.mode, params.force));
     if (params.action === 'toBase') return jsonOut(sendToBase(params.again));
@@ -210,6 +215,36 @@ function columnLetter(c) {
 
 // ===================== Загрузка участников из «Регистрации ГТО» =====================
 
+function registrationDateName(name) {
+  return String(name || '').replace(REG_CLOSED_RE, '').trim();
+}
+
+function registrationIsClosed(sheet) {
+  return sheet.isSheetHidden() || REG_CLOSED_RE.test(sheet.getName());
+}
+
+// Маркер понимает уже развёрнутый бэкенд регистрации. Правка выполняется под замком doPost.
+function closeRegistrationDate(params) {
+  var code = PropertiesService.getScriptProperties().getProperty(REG_ADMIN_CODE);
+  if (!code || code.length < 24) {
+    return { ok: false, error: 'В Apps Script главного протокола не настроен код администратора регистрации.' };
+  }
+  if (params.code !== code) return { ok: false, error: 'Неверный код администратора.' };
+  if (!Number.isInteger(params.sheetId) || params.sheetId < 0) {
+    return { ok: false, error: 'Не удалось определить дату регистрации.' };
+  }
+  var reg = SpreadsheetApp.openById(REG_SPREADSHEET_ID);
+  var sheet = reg.getSheets().find(function (sh) { return sh.getSheetId() === params.sheetId; });
+  if (!sheet || !REG_DATE_RE.test(sheet.getName().trim())) {
+    return { ok: false, error: 'Лист с датой регистрации не найден.' };
+  }
+  if (!registrationIsClosed(sheet)) {
+    sheet.setName(sheet.getName() + REG_CLOSED_MARK);
+    SpreadsheetApp.flush();
+  }
+  return { ok: true, closed: true, sheetId: params.sheetId };
+}
+
 // Список дат (листов) регистрации с числом участников
 function listDates() {
   var reg = SpreadsheetApp.openById(REG_SPREADSHEET_ID);
@@ -218,7 +253,7 @@ function listDates() {
     var name = sh.getName();
     if (REG_SKIP_SHEETS.indexOf(name.trim().toLowerCase()) !== -1) return;
     var count = readRegistration(sh).length;
-    if (count) dates.push({ name: name, count: count });
+    if (count) dates.push({ name: registrationDateName(name), count: count });
   });
   return { ok: true, dates: dates, current: currentEvent() };
 }
@@ -249,15 +284,15 @@ function registrationSummary() {
   var reg = SpreadsheetApp.openById(REG_SPREADSHEET_ID);
   return reg.getSheets().reduce(function (dates, sh) {
     var name = sh.getName();
-    if (REG_SKIP_SHEETS.indexOf(name.trim().toLowerCase()) !== -1) return dates;
+    if (!REG_DATE_RE.test(name.trim())) return dates;
     var people = readRegistration(sh);
-    if (!people.length) return dates;
     var classes = Object.create(null);
     people.forEach(function (p) {
       var cls = summaryClass(p.klass, p.letter);
       classes[cls] = (classes[cls] || 0) + 1;
     });
-    dates.push({ name: name, count: people.length, classes: classes });
+    dates.push({ name: registrationDateName(name), sheetId: sh.getSheetId(),
+      count: people.length, classes: classes, closed: registrationIsClosed(sh) });
     return dates;
   }, []);
 }
@@ -340,8 +375,11 @@ function readRegistration(sh) {
 function loadDate(name, mode, force) {
   name = String(name || '');
   var reg = SpreadsheetApp.openById(REG_SPREADSHEET_ID);
-  var src = reg.getSheetByName(name);
+  var src = reg.getSheetByName(name) || reg.getSheets().find(function (sh) {
+    return registrationDateName(sh.getName()) === name;
+  });
   if (!src) return { ok: false, error: 'в регистрации нет листа «' + name + '»' };
+  name = registrationDateName(src.getName());
   var people = readRegistration(src);
   if (!people.length) return { ok: false, error: 'на листе «' + name + '» нет участников' };
   var sheet = getSheet();
@@ -384,7 +422,7 @@ function loadDate(name, mode, force) {
 function baseState() {
   try { return JSON.parse(PropertiesService.getDocumentProperties().getProperty('base_sent') || '{}'); } catch (e) { return {}; }
 }
-function sentToBase() { var st = baseState(); return !!st.event && st.event === currentEvent(); }
+function sentToBase() { var st = baseState(); return !!st.event && registrationDateName(st.event) === currentEvent(); }
 
 function eventDate(name) {
   var m = String(name || '').match(/(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})/);
@@ -398,7 +436,7 @@ function sendToBase(again) {
   var date = eventDate(event);
   if (!date) return { ok: false, error: 'в названии загруженной даты («' + (event || '—') + '») не найдена дата вида 23.11.26' };
   var st = baseState();
-  if (st.event === event && !again) return { ok: false, already: true, at: st.at, count: st.count, event: event };
+  if (registrationDateName(st.event) === event && !again) return { ok: false, already: true, at: st.at, count: st.count, event: event };
 
   var sheet = getSheet();
   var last = sheet.getLastRow();
@@ -1021,7 +1059,7 @@ function appendPeople(sheet, people) {
 
 // Что сейчас загружено — хранится в свойствах документа и видно на листе «управление»
 function currentEvent() {
-  return PropertiesService.getDocumentProperties().getProperty('gto_event') || '';
+  return registrationDateName(PropertiesService.getDocumentProperties().getProperty('gto_event'));
 }
 
 function setControl(name, count, archive) {
